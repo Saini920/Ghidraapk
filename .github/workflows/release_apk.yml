@@ -22,8 +22,10 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Generate debug.keystore
-        run: keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "C=US, O=Android, CN=Android Debug"
+      - name: Restore persistent debug.keystore
+        run: |
+          mkdir -p ~/.android
+          cp debug.keystore ~/.android/debug.keystore || true
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3

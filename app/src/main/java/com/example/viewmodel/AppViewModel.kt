@@ -34,7 +34,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    private val BOT_TOKEN = "8947225372:AAH7ubfHB-KyelruqrjoIgrgCeAZj_XDWYE"
     private val DEFAULT_CHAT_ID = "6684870256"
 
     val allProjects: StateFlow<List<ProjectEntity>> = projectDao.getAllProjects()
@@ -48,10 +47,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val githubRepo = settingsRepository.githubRepoFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Saini920/Bottestgidra")
     val githubEvent = settingsRepository.githubEventFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "decompile-job")
     val apiServer = settingsRepository.apiServerFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+    val botTokenFlow = settingsRepository.botTokenFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "8947225372:AAH7ubfHB-KyelruqrjoIgrgCeAZj_XDWYE")
 
-    fun saveSettings(token: String, repo: String, event: String, server: String) {
+    fun saveSettings(token: String, repo: String, event: String, server: String, botToken: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            settingsRepository.saveSettings(token, repo, event, server)
+            settingsRepository.saveSettings(token, repo, event, server, botToken)
         }
     }
 
@@ -150,7 +150,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 .build()
 
                             val uploadReq = Request.Builder()
-                                .url("https://api.telegram.org/bot$BOT_TOKEN/sendDocument")
+                                .url("https://api.telegram.org/bot${botTokenFlow.value}/sendDocument")
                                 .post(requestBody)
                                 .build()
 
@@ -161,7 +161,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 val fileId = json.getJSONObject("result").getJSONObject("document").getString("file_id")
 
                                 val getFileReq = Request.Builder()
-                                    .url("https://api.telegram.org/bot$BOT_TOKEN/getFile?file_id=$fileId")
+                                    .url("https://api.telegram.org/bot${botTokenFlow.value}/getFile?file_id=$fileId")
                                     .get()
                                     .build()
 
@@ -196,7 +196,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     put("tg_file_path", tgFilePath)
                     put("file_url", targetUrl)
                     put("chat_id", DEFAULT_CHAT_ID)
-                    put("bot_token", BOT_TOKEN)
+                    put("bot_token", botTokenFlow.value)
                 })
             }
 
@@ -232,7 +232,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 delay(5000) // Poll every 5 seconds
                 try {
                     val pollReq = Request.Builder()
-                        .url("https://api.telegram.org/bot$BOT_TOKEN/getUpdates?offset=$offset&timeout=2")
+                        .url("https://api.telegram.org/bot${botTokenFlow.value}/getUpdates?offset=$offset&timeout=2")
                         .get()
                         .build()
 
@@ -271,7 +271,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                         val zipFileId = doc.getString("file_id")
 
                                         val zipPathReq = Request.Builder()
-                                            .url("https://api.telegram.org/bot$BOT_TOKEN/getFile?file_id=$zipFileId")
+                                            .url("https://api.telegram.org/bot${botTokenFlow.value}/getFile?file_id=$zipFileId")
                                             .get()
                                             .build()
 
@@ -281,7 +281,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                             val zipFilePath = JSONObject(zipPathBody).getJSONObject("result").getString("file_path")
 
                                             val downloadReq = Request.Builder()
-                                                .url("https://api.telegram.org/file/bot$BOT_TOKEN/$zipFilePath")
+                                                .url("https://api.telegram.org/file/bot${botTokenFlow.value}/$zipFilePath")
                                                 .get()
                                                 .build()
 

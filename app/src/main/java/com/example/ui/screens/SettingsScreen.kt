@@ -25,11 +25,13 @@ fun SettingsScreen(
     val currentRepo by viewModel.githubRepo.collectAsStateWithLifecycle()
     val currentEvent by viewModel.githubEvent.collectAsStateWithLifecycle()
     val currentServer by viewModel.apiServer.collectAsStateWithLifecycle()
+    val currentBotToken by viewModel.botTokenFlow.collectAsStateWithLifecycle()
 
     var token by remember(currentToken) { mutableStateOf(currentToken) }
     var repo by remember(currentRepo) { mutableStateOf(currentRepo) }
     var event by remember(currentEvent) { mutableStateOf(currentEvent) }
     var server by remember(currentServer) { mutableStateOf(currentServer) }
+    var botToken by remember(currentBotToken) { mutableStateOf(currentBotToken) }
 
     Scaffold(
         containerColor = BackgroundDark,
@@ -57,6 +59,22 @@ fun SettingsScreen(
                 value = token,
                 onValueChange = { token = it },
                 label = { Text("GitHub Token (ghp_...)") },
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary,
+                    focusedBorderColor = PrimaryPurple,
+                    unfocusedBorderColor = DividerDark,
+                    focusedLabelColor = PrimaryPurple,
+                    unfocusedLabelColor = TextSecondary
+                )
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            OutlinedTextField(
+                value = botToken,
+                onValueChange = { botToken = it },
+                label = { Text("Telegram Bot Token") },
                 visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -118,7 +136,7 @@ fun SettingsScreen(
             
             Button(
                 onClick = {
-                    viewModel.saveSettings(token, repo, event, server)
+                    viewModel.saveSettings(token, repo, event, server, botToken)
                     onNavigateBack()
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
