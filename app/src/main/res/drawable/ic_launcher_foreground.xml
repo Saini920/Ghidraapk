@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- A dragon/dinosaur-like silhouette icon -->
+    <path
+        android:fillColor="#64FFDA"
+        android:pathData="M11.5,2C10.67,2 10,2.67 10,3.5C10,4.33 10.67,5 11.5,5C12.33,5 13,4.33 13,3.5C13,2.67 12.33,2 11.5,2M8,6C6.9,6 6,6.9 6,8V12C6,13.1 6.9,14 8,14H9V20H15V14H16C17.1,14 18,13.1 18,12V8C18,6.9 17.1,6 16,6H8M9.5,8H11V10H9.5V8M13,8H14.5V10H13V8Z"/>
+</vector>
