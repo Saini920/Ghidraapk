@@ -71,48 +71,112 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             var tgFilePath = ""
             var targetUrl = fileUrl ?: ""
 
-            // Step 1: Real Upload to Telegram Bot API if user uploaded a file from phone
+            // Step 1: Real Upload to Cloud Host (Catbox -> TmpFiles -> Telegram)
             if (contentUri != null) {
                 try {
-                    val inputStream = getApplication<Application>().contentResolver.openInputStream(contentUri)
-                    if (inputStream != null) {
-                        val fileBytes = inputStream.readBytes()
-                        inputStream.close()
+                    val app = getApplication<Application>()
+                    val tempFile = java.io.File(app.cacheDir, fileName)
+                    app.contentResolver.openInputStream(contentUri)?.use { input ->
+                        tempFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
 
-                        val requestBody = MultipartBody.Builder()
+                    // Primary: Upload to Catbox.moe
+                    try {
+                        val catboxBody = MultipartBody.Builder()
                             .setType(MultipartBody.FORM)
-                            .addFormDataPart("chat_id", DEFAULT_CHAT_ID)
+                            .addFormDataPart("reqtype", "fileupload")
                             .addFormDataPart(
-                                "document",
+                                "fileToUpload",
                                 fileName,
-                                fileBytes.toRequestBody("application/octet-stream".toMediaType())
+                                okhttp3.RequestBody.create("application/octet-stream".toMediaType(), tempFile)
                             )
                             .build()
 
-                        val uploadReq = Request.Builder()
-                            .url("https://api.telegram.org/bot$BOT_TOKEN/sendDocument")
-                            .post(requestBody)
+                        val catboxReq = Request.Builder()
+                            .url("https://catbox.moe/user/api.php")
+                            .post(catboxBody)
                             .build()
 
-                        val response = client.newCall(uploadReq).execute()
-                        val respBody = response.body?.string() ?: ""
-                        if (response.isSuccessful && respBody.contains("\"ok\":true")) {
-                            val json = JSONObject(respBody)
-                            val fileId = json.getJSONObject("result").getJSONObject("document").getString("file_id")
+                        val catboxResp = client.newCall(catboxReq).execute()
+                        val catboxUrl = catboxResp.body?.string()?.trim() ?: ""
+                        if (catboxResp.isSuccessful && catboxUrl.startsWith("http")) {
+                            targetUrl = catboxUrl
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
 
-                            // Get File Path
-                            val getFileReq = Request.Builder()
-                                .url("https://api.telegram.org/bot$BOT_TOKEN/getFile?file_id=$fileId")
-                                .get()
+                    // Fallback 1: TmpFiles.org
+                    if (targetUrl.isBlank()) {
+                        try {
+                            val tmpBody = MultipartBody.Builder()
+                                .setType(MultipartBody.FORM)
+                                .addFormDataPart(
+                                    "file",
+                                    fileName,
+                                    okhttp3.RequestBody.create("application/octet-stream".toMediaType(), tempFile)
+                                )
                                 .build()
 
-                            val getFileResp = client.newCall(getFileReq).execute()
-                            val getFileBody = getFileResp.body?.string() ?: ""
-                            if (getFileResp.isSuccessful && getFileBody.contains("\"ok\":true")) {
-                                tgFilePath = JSONObject(getFileBody).getJSONObject("result").getString("file_path")
+                            val tmpReq = Request.Builder()
+                                .url("https://tmpfiles.org/api/v1/upload")
+                                .post(tmpBody)
+                                .build()
+
+                            val tmpResp = client.newCall(tmpReq).execute()
+                            val tmpBodyStr = tmpResp.body?.string() ?: ""
+                            if (tmpResp.isSuccessful && tmpBodyStr.contains("\"url\":\"")) {
+                                val rawUrl = JSONObject(tmpBodyStr).getJSONObject("data").getString("url")
+                                targetUrl = rawUrl.replace("tmpfiles.org/", "tmpfiles.org/dl/")
                             }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
                         }
                     }
+
+                    // Fallback 2: Telegram Bot API
+                    if (targetUrl.isBlank()) {
+                        try {
+                            val requestBody = MultipartBody.Builder()
+                                .setType(MultipartBody.FORM)
+                                .addFormDataPart("chat_id", DEFAULT_CHAT_ID)
+                                .addFormDataPart(
+                                    "document",
+                                    fileName,
+                                    okhttp3.RequestBody.create("application/octet-stream".toMediaType(), tempFile)
+                                )
+                                .build()
+
+                            val uploadReq = Request.Builder()
+                                .url("https://api.telegram.org/bot$BOT_TOKEN/sendDocument")
+                                .post(requestBody)
+                                .build()
+
+                            val response = client.newCall(uploadReq).execute()
+                            val respBody = response.body?.string() ?: ""
+                            if (response.isSuccessful && respBody.contains("\"ok\":true")) {
+                                val json = JSONObject(respBody)
+                                val fileId = json.getJSONObject("result").getJSONObject("document").getString("file_id")
+
+                                val getFileReq = Request.Builder()
+                                    .url("https://api.telegram.org/bot$BOT_TOKEN/getFile?file_id=$fileId")
+                                    .get()
+                                    .build()
+
+                                val getFileResp = client.newCall(getFileReq).execute()
+                                val getFileBody = getFileResp.body?.string() ?: ""
+                                if (getFileResp.isSuccessful && getFileBody.contains("\"ok\":true")) {
+                                    tgFilePath = JSONObject(getFileBody).getJSONObject("result").getString("file_path")
+                                }
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+
+                    try { tempFile.delete() } catch (e: Exception) {}
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }

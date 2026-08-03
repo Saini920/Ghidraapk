@@ -41,6 +41,7 @@ fun DashboardScreen(
     onNavigateToViewer: (Int) -> Unit
 ) {
     val projects by viewModel.allProjects.collectAsStateWithLifecycle()
+    var showAllProjects by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -300,15 +301,17 @@ fun DashboardScreen(
                     fontWeight = FontWeight.Medium
                 )
                 Text(
-                    text = "View All",
+                    text = if (showAllProjects) "Show Less" else "View All",
                     color = AccentBlue,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
-                    modifier = Modifier.clickable { /* TBD */ }
+                    modifier = Modifier.clickable { showAllProjects = !showAllProjects }
                 )
             }
             
             Spacer(modifier = Modifier.height(12.dp))
+            
+            val displayedProjects = if (showAllProjects) projects else projects.take(5)
             
             if (projects.isEmpty()) {
                 Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -316,7 +319,7 @@ fun DashboardScreen(
                 }
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(projects) { project ->
+                    items(displayedProjects) { project ->
                         ProjectItem(project = project, onClick = { onNavigateToViewer(project.id) })
                     }
                 }
