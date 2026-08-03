@@ -89,7 +89,7 @@ fun DashboardScreen(
                         letterSpacing = (-0.5).sp
                     )
                     Text(
-                        text = "ENGINE CONNECTED: 7GB CLOUD",
+                        text = "CLOUD ENGINE CONNECTED",
                         color = AccentBlue,
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace,
@@ -378,7 +378,9 @@ fun ProjectItem(project: ProjectEntity, onClick: () -> Unit) {
                             else -> AccentBlue
                         },
                         fontSize = 12.sp,
-                        fontWeight = if (project.status != "COMPLETED" && !project.status.startsWith("FAILED")) FontWeight.Bold else FontWeight.Normal
+                        fontWeight = if (project.status != "COMPLETED" && !project.status.startsWith("FAILED")) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
                 
