@@ -372,12 +372,26 @@ fun ProjectItem(project: ProjectEntity, onClick: () -> Unit) {
                     )
                     Text(
                         text = project.status,
-                        color = when (project.status) {
-                            "COMPLETED" -> SuccessGreen
-                            "FAILED" -> MaterialTheme.colorScheme.error
-                            else -> TextSecondary
+                        color = when {
+                            project.status == "COMPLETED" -> SuccessGreen
+                            project.status.startsWith("FAILED") -> MaterialTheme.colorScheme.error
+                            else -> AccentBlue
                         },
-                        fontSize = 12.sp
+                        fontSize = 12.sp,
+                        fontWeight = if (project.status != "COMPLETED" && !project.status.startsWith("FAILED")) FontWeight.Bold else FontWeight.Normal
+                    )
+                }
+                
+                // Add Progress Bar for active jobs
+                if (project.status != "COMPLETED" && !project.status.startsWith("FAILED")) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = PrimaryPurple,
+                        trackColor = DividerDark
                     )
                 }
             }
