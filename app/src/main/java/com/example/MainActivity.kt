@@ -8,6 +8,7 @@ import androidx.activity.viewModels
 import com.example.navigation.AppNavigation
 import com.example.ui.theme.AppTheme
 import com.example.viewmodel.AppViewModel
+import androidx.compose.foundation.layout.Box
 
 class MainActivity : ComponentActivity() {
     private val viewModel: AppViewModel by viewModels()
@@ -17,7 +18,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             AppTheme {
-                AppNavigation(viewModel)
+                Box(modifier = androidx.compose.foundation.layout.Modifier.fillMaxSize()) {
+                    AppNavigation(viewModel)
+                    com.example.ui.components.DebuggerOverlay()
+                }
             }
         }
     }
