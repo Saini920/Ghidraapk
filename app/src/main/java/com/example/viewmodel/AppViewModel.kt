@@ -245,7 +245,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
                         for (i in 0 until updates.length()) {
                             val update = updates.getJSONObject(i)
-                            offset = update.getInt("update_id") + 1
+                            val currentUpdateId = update.getInt("update_id")
+                            if (currentUpdateId >= offset) {
+                                offset = currentUpdateId + 1
+                            }
 
                             val editedMessage = update.optJSONObject("edited_message")
                             if (editedMessage != null) {
