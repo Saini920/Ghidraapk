@@ -247,6 +247,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             val update = updates.getJSONObject(i)
                             offset = update.getInt("update_id") + 1
 
+                            val editedMessage = update.optJSONObject("edited_message")
+                            if (editedMessage != null) {
+                                val text = editedMessage.optString("text", "")
+                                if (text.contains("▰") || text.contains("▱")) {
+                                    val regex = "[▰▱]+ \\d+\\.\\d+ %".toRegex()
+                                    val match = regex.find(text)
+                                    if (match != null) {
+                                        projectDao.updateStatus(id, match.value)
+                                    }
+                                }
+                            }
+
                             val message = update.optJSONObject("message") ?: update.optJSONObject("channel_post")
                             if (message != null) {
                                 val doc = message.optJSONObject("document")
