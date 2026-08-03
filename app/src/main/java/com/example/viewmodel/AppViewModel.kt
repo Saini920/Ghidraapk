@@ -80,6 +80,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             var targetUrl = fileUrl ?: ""
 
             // Step 1: Real Upload to Cloud Host (Catbox -> TmpFiles -> Telegram)
+            var errorLog = ""
             if (contentUri != null) {
                 try {
                     val app = getApplication<Application>()
@@ -89,35 +90,42 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             input.copyTo(output)
                         }
                     }
+                    if (!tempFile.exists() || tempFile.length() == 0L) {
+                        errorLog += "File is empty or could not be read. "
+                    }
 
                     // Primary: Upload to Catbox.moe
-                    try {
-                        val catboxBody = MultipartBody.Builder()
-                            .setType(MultipartBody.FORM)
-                            .addFormDataPart("reqtype", "fileupload")
-                            .addFormDataPart(
-                                "fileToUpload",
-                                fileName,
-                                okhttp3.RequestBody.create("application/octet-stream".toMediaType(), tempFile)
-                            )
-                            .build()
+                    if (targetUrl.isBlank() && tempFile.exists() && tempFile.length() > 0) {
+                        try {
+                            val catboxBody = MultipartBody.Builder()
+                                .setType(MultipartBody.FORM)
+                                .addFormDataPart("reqtype", "fileupload")
+                                .addFormDataPart(
+                                    "fileToUpload",
+                                    fileName,
+                                    okhttp3.RequestBody.create("application/octet-stream".toMediaType(), tempFile)
+                                )
+                                .build()
 
-                        val catboxReq = Request.Builder()
-                            .url("https://catbox.moe/user/api.php")
-                            .post(catboxBody)
-                            .build()
+                            val catboxReq = Request.Builder()
+                                .url("https://catbox.moe/user/api.php")
+                                .post(catboxBody)
+                                .build()
 
-                        val catboxResp = client.newCall(catboxReq).execute()
-                        val catboxUrl = catboxResp.body?.string()?.trim() ?: ""
-                        if (catboxResp.isSuccessful && catboxUrl.startsWith("http")) {
-                            targetUrl = catboxUrl
+                            val catboxResp = client.newCall(catboxReq).execute()
+                            val catboxUrl = catboxResp.body?.string()?.trim() ?: ""
+                            if (catboxResp.isSuccessful && catboxUrl.startsWith("http")) {
+                                targetUrl = catboxUrl
+                            } else {
+                                errorLog += "Catbox[${catboxResp.code}] "
+                            }
+                        } catch (e: Exception) {
+                            errorLog += "CatboxEx[${e.message}] "
                         }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
                     }
 
                     // Fallback 1: TmpFiles.org
-                    if (targetUrl.isBlank()) {
+                    if (targetUrl.isBlank() && tempFile.exists() && tempFile.length() > 0) {
                         try {
                             val tmpBody = MultipartBody.Builder()
                                 .setType(MultipartBody.FORM)
@@ -138,14 +146,42 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             if (tmpResp.isSuccessful && tmpBodyStr.contains("\"url\":\"")) {
                                 val rawUrl = JSONObject(tmpBodyStr).getJSONObject("data").getString("url")
                                 targetUrl = rawUrl.replace("tmpfiles.org/", "tmpfiles.org/dl/")
+                            } else {
+                                errorLog += "Tmp[${tmpResp.code}] "
                             }
                         } catch (e: Exception) {
-                            e.printStackTrace()
+                            errorLog += "TmpEx[${e.message}] "
                         }
                     }
 
-                    // Fallback 2: Telegram Bot API
-                    if (targetUrl.isBlank()) {
+                    // Fallback 2: bashupload.com
+                    if (targetUrl.isBlank() && tempFile.exists() && tempFile.length() > 0) {
+                        try {
+                            val bashReq = Request.Builder()
+                                .url("https://bashupload.com/$fileName")
+                                .put(okhttp3.RequestBody.create("application/octet-stream".toMediaType(), tempFile))
+                                .build()
+                            
+                            val bashResp = client.newCall(bashReq).execute()
+                            val bashBodyStr = bashResp.body?.string() ?: ""
+                            if (bashResp.isSuccessful) {
+                                val regex = "(https?://bashupload\\.com/[^\\s]+)".toRegex()
+                                val match = regex.find(bashBodyStr)
+                                if (match != null) {
+                                    targetUrl = match.value
+                                } else {
+                                    errorLog += "Bash[NoRegex] "
+                                }
+                            } else {
+                                errorLog += "Bash[${bashResp.code}] "
+                            }
+                        } catch (e: Exception) {
+                            errorLog += "BashEx[${e.message}] "
+                        }
+                    }
+
+                    // Fallback 3: Telegram Bot API
+                    if (targetUrl.isBlank() && tempFile.exists() && tempFile.length() > 0) {
                         try {
                             val requestBody = MultipartBody.Builder()
                                 .setType(MultipartBody.FORM)
@@ -157,8 +193,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 )
                                 .build()
 
+                            val safeToken = botTokenFlow.value.trim()
                             val uploadReq = Request.Builder()
-                                .url("https://api.telegram.org/bot${botTokenFlow.value}/sendDocument")
+                                .url("https://api.telegram.org/bot$safeToken/sendDocument")
                                 .post(requestBody)
                                 .build()
 
@@ -169,7 +206,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 val fileId = json.getJSONObject("result").getJSONObject("document").getString("file_id")
 
                                 val getFileReq = Request.Builder()
-                                    .url("https://api.telegram.org/bot${botTokenFlow.value}/getFile?file_id=$fileId")
+                                    .url("https://api.telegram.org/bot$safeToken/getFile?file_id=$fileId")
                                     .get()
                                     .build()
 
@@ -178,20 +215,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 if (getFileResp.isSuccessful && getFileBody.contains("\"ok\":true")) {
                                     tgFilePath = JSONObject(getFileBody).getJSONObject("result").getString("file_path")
                                 }
+                            } else {
+                                errorLog += "TG[${response.code}] "
                             }
                         } catch (e: Exception) {
-                            e.printStackTrace()
+                            errorLog += "TGEx[${e.message}] "
                         }
                     }
 
                     try { tempFile.delete() } catch (e: Exception) {}
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    errorLog += "StreamEx[${e.message}] "
                 }
             }
 
             if (tgFilePath.isBlank() && targetUrl.isBlank()) {
-                projectDao.updateStatus(id, "FAILED (UPLOAD ERROR)")
+                projectDao.updateStatus(id, "FAILED: $errorLog")
                 return@launch
             }
 
