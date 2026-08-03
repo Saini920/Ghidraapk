@@ -32,6 +32,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         .connectTimeout(60, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            val original = chain.request()
+            val request = original.newBuilder()
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .method(original.method, original.body)
+                .build()
+            chain.proceed(request)
+        }
         .build()
 
     private val DEFAULT_CHAT_ID = "6684870256"
