@@ -1,4 +1,4 @@
-name: Build & Direct GitHub Release APK
+name: Push-triggered Auto Release via GitHub Releases
 
 on:
   push:
@@ -13,32 +13,37 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository Code
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      - name: Setup Java 17 (JDK)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
-      - name: Make Gradlew Executable
-        run: chmod +x gradlew || true
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
 
-      - name: Build Debug & Release APK
-        run: ./gradlew assembleDebug --no-daemon
+      - name: Build APK Binary
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x gradlew
+            ./gradlew assembleDebug --no-daemon
+          else
+            gradle assembleDebug --no-daemon
+          fi
 
-      - name: Auto Publish to GitHub Releases
+      - name: Direct Upload & Publish to GitHub Releases
         uses: softprops/action-gh-release@v1
         with:
           tag_name: "v1.0.${{ github.run_number }}"
           name: "Ghidra Mobile APK Release v1.0.${{ github.run_number }}"
           body: |
-            🚀 **Automatic Push-Triggered APK Build**
-            - **Commit:** `${{ github.sha }}`
-            - **Ref:** `${{ github.ref }}`
-            - **Timestamp:** `${{ github.event.head_commit.timestamp }}`
+            🚀 **Push-Triggered Auto Release (Artifact-Free Direct Publish)**
+            - **Commit SHA:** `${{ github.sha }}`
+            - **Branch:** `${{ github.ref }}`
+            - **Build Run Number:** `#${{ github.run_number }}`
           files: app/build/outputs/apk/debug/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
