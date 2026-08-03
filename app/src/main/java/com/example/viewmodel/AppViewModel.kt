@@ -187,6 +187,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
+            val jobId = "ghidra_job_${java.util.UUID.randomUUID().toString().replace("-", "")}"
+
             // Step 2: Trigger GitHub Repository Dispatch Real Time
             projectDao.updateStatus(id, "DISPATCHING TO GHIDRA...")
             val payloadObj = JSONObject().apply {
@@ -197,6 +199,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     put("file_url", targetUrl)
                     put("chat_id", DEFAULT_CHAT_ID)
                     put("bot_token", botTokenFlow.value)
+                    put("job_id", jobId)
                 })
             }
 
@@ -232,91 +235,68 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 delay(5000) // Poll every 5 seconds
                 try {
                     val pollReq = Request.Builder()
-                        .url("https://api.telegram.org/bot${botTokenFlow.value}/getUpdates?offset=$offset&timeout=2")
+                        .url("https://ntfy.sh/$jobId/json?poll=1")
                         .get()
                         .build()
 
                     val pollResp = client.newCall(pollReq).execute()
                     val pollBody = pollResp.body?.string() ?: ""
 
-                    if (pollResp.isSuccessful && pollBody.contains("\"ok\":true")) {
-                        val json = JSONObject(pollBody)
-                        val updates = json.getJSONArray("result")
+                    if (pollResp.isSuccessful && pollBody.isNotBlank()) {
+                        val lines = pollBody.split("\n")
+                        for (line in lines) {
+                            if (line.isBlank()) continue
+                            try {
+                                val json = JSONObject(line)
+                                if (json.optString("event") == "message") {
+                                    val text = json.optString("message", "")
 
-                        for (i in 0 until updates.length()) {
-                            val update = updates.getJSONObject(i)
-                            val currentUpdateId = update.getInt("update_id")
-                            if (currentUpdateId >= offset) {
-                                offset = currentUpdateId + 1
-                            }
-
-                            val editedMessage = update.optJSONObject("edited_message")
-                            if (editedMessage != null) {
-                                val text = editedMessage.optString("text", "")
-                                if (text.contains("▰") || text.contains("▱")) {
-                                    val regex = "[▰▱]+ \\d+\\.\\d+ %".toRegex()
-                                    val match = regex.find(text)
-                                    if (match != null) {
-                                        projectDao.updateStatus(id, match.value)
+                                    // Real-time progress bar extraction
+                                    if (text.contains("▰") || text.contains("▱")) {
+                                        val regex = "[▰▱]+ \\d+\\.\\d+ %".toRegex()
+                                        val match = regex.find(text)
+                                        if (match != null) {
+                                            projectDao.updateStatus(id, match.value)
+                                        }
                                     }
-                                }
-                            }
 
-                            val message = update.optJSONObject("message") ?: update.optJSONObject("channel_post")
-                            if (message != null) {
-                                val doc = message.optJSONObject("document")
-                                if (doc != null) {
-                                    val docName = doc.optString("file_name", "")
-                                    if (docName.endsWith(".zip") || docName.contains("decompiled")) {
-                                        val zipFileId = doc.getString("file_id")
+                                    // Check for final result ZIP
+                                    if (text.startsWith("FINAL_ZIP_URL:")) {
+                                        val url = text.substringAfter("FINAL_ZIP_URL:")
+                                        val downloadReq = Request.Builder().url(url).get().build()
+                                        val downloadResp = client.newCall(downloadReq).execute()
+                                        val zipBytes = downloadResp.body?.bytes()
 
-                                        val zipPathReq = Request.Builder()
-                                            .url("https://api.telegram.org/bot${botTokenFlow.value}/getFile?file_id=$zipFileId")
-                                            .get()
-                                            .build()
-
-                                        val zipPathResp = client.newCall(zipPathReq).execute()
-                                        val zipPathBody = zipPathResp.body?.string() ?: ""
-                                        if (zipPathResp.isSuccessful && zipPathBody.contains("\"ok\":true")) {
-                                            val zipFilePath = JSONObject(zipPathBody).getJSONObject("result").getString("file_path")
-
-                                            val downloadReq = Request.Builder()
-                                                .url("https://api.telegram.org/file/bot${botTokenFlow.value}/$zipFilePath")
-                                                .get()
-                                                .build()
-
-                                            val downloadResp = client.newCall(downloadReq).execute()
-                                            val zipBytes = downloadResp.body?.bytes()
-                                            if (zipBytes != null) {
-                                                val zipInputStream = ZipInputStream(zipBytes.inputStream())
-                                                var entry = zipInputStream.nextEntry
-                                                val sb = StringBuilder()
-                                                while (entry != null) {
-                                                    if (entry.name.endsWith(".c") || entry.name.endsWith(".txt")) {
-                                                        sb.append("/* === ").append(entry.name).append(" === */\n")
-                                                        val buffer = ByteArray(1024)
-                                                        var len: Int
-                                                        val baos = ByteArrayOutputStream()
-                                                        while (zipInputStream.read(buffer).also { len = it } > 0) {
-                                                            baos.write(buffer, 0, len)
-                                                        }
-                                                        sb.append(baos.toString("UTF-8")).append("\n\n")
+                                        if (zipBytes != null) {
+                                            val zipInputStream = ZipInputStream(zipBytes.inputStream())
+                                            var entry = zipInputStream.nextEntry
+                                            val sb = StringBuilder()
+                                            while (entry != null) {
+                                                if (entry.name.endsWith(".c") || entry.name.endsWith(".txt")) {
+                                                    sb.append("/* === ").append(entry.name).append(" === */\n")
+                                                    val buffer = ByteArray(1024)
+                                                    var len: Int
+                                                    val baos = ByteArrayOutputStream()
+                                                    while (zipInputStream.read(buffer).also { len = it } > 0) {
+                                                        baos.write(buffer, 0, len)
                                                     }
-                                                    entry = zipInputStream.nextEntry
+                                                    sb.append(baos.toString("UTF-8")).append("\n\n")
                                                 }
-                                                zipInputStream.close()
-                                                decompiledSource = sb.toString()
-                                                if (decompiledSource.isNotBlank()) {
-                                                    isCompleted = true
-                                                    break
-                                                }
+                                                entry = zipInputStream.nextEntry
+                                            }
+                                            zipInputStream.close()
+                                            decompiledSource = sb.toString()
+                                            if (decompiledSource.isNotBlank()) {
+                                                isCompleted = true
+                                                break
                                             }
                                         }
                                     }
                                 }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
                             }
                         }
-
                         if (isCompleted) break
                     }
                 } catch (e: Exception) {
